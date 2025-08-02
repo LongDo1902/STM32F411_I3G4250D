@@ -86,27 +86,46 @@ typedef struct{
 
 
 /*
- * Function Declarations
+ * ===============================================================
+ * Public Helper Function Declarations
+ * ===============================================================
+ */
+void writeSPI(uint8_t bitPosition,
+			  SPI_Name_t SPIx,
+			  SPI_Reg_t regName,
+			  uint32_t value);
+
+uint16_t readSPI(uint8_t bitPosition,
+				 SPI_Name_t SPIx,
+				 SPI_Reg_t regName);
+
+char SPI_readReceivedData(SPI_GPIO_Config_t config,
+						  uint8_t slaveDeviceAddr);
+
+bool SPI_readBuffer(SPI_GPIO_Config_t config,
+					uint8_t startAddr,
+					char* rxBuf,
+					uint8_t len);
+
+void SPI_write2Device(SPI_GPIO_Config_t config,
+					  uint8_t slaveDeviceAddr,
+					  uint8_t writeValue);
+
+
+/*
+ * ===============================================================
+ * Public Main Function Declarations
+ * ===============================================================
  */
 void SPI_sckPin_init(GPIO_Pin_t sckPin, GPIO_PortName_t sckPort, SPI_Name_t SPIx);
 void SPI_mosiPin_init(GPIO_Pin_t mosiPin, GPIO_PortName_t mosiPort, SPI_Name_t SPIx);
 void SPI_misoPin_init(GPIO_Pin_t misoPin, GPIO_PortName_t misoPort, SPI_Name_t SPIx);
-
+void SPI_GPIO_init(SPI_GPIO_Config_t config);
 void SPI_basicConfigInit(SPI_GPIO_Config_t config,
 						 SPI_MSTR_t masterSlaveSel,
 						 SPI_DFF_t dataFrameSize,
 						 SPI_BaudRate_t baudRateSel,
 						 SPI_SSM_t softSlaveEn,
 						 SPI_Enable_t enableMode);
-
-void SPI_GPIO_init(SPI_GPIO_Config_t config);
-
-void SPI_write2Device(SPI_GPIO_Config_t config, char slaveDeviceAddr, char writeValue);
-char SPI_readReceivedData(SPI_GPIO_Config_t config, char slaveDeviceAddr);
-
-uint16_t readSPI(uint8_t bitPosition, SPI_Name_t SPIx, SPI_Reg_t regName);
-void writeSPI(uint8_t bitPosition, SPI_Name_t SPIx, SPI_Reg_t regName, uint32_t value);
-
-
 
 #endif /* INC_SPI_H_ */

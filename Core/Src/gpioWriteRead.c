@@ -11,6 +11,7 @@
  * Helper function to flexible enable GPIO clock
  */
 void Enable_GPIO_Clock(GPIO_PortName_t port){
+#if 0
 	switch(port){
 		case my_GPIOA: my_RCC_GPIOA_CLK_ENABLE(); break;
 		case my_GPIOB: my_RCC_GPIOB_CLK_ENABLE(); break;
@@ -20,8 +21,18 @@ void Enable_GPIO_Clock(GPIO_PortName_t port){
 		case my_GPIOH: my_RCC_GPIOH_CLK_ENABLE(); break;
 		default: return;
 	}
+#else
+	switch(port){
+		case my_GPIOA: __HAL_RCC_GPIOA_CLK_ENABLE(); break;
+		case my_GPIOB: __HAL_RCC_GPIOB_CLK_ENABLE(); break;
+		case my_GPIOC: __HAL_RCC_GPIOC_CLK_ENABLE(); break;
+		case my_GPIOD: __HAL_RCC_GPIOD_CLK_ENABLE(); break;
+		case my_GPIOE: __HAL_RCC_GPIOE_CLK_ENABLE(); break;
+		case my_GPIOH: __HAL_RCC_GPIOH_CLK_ENABLE(); break;
+		default: return;
+	}
+#endif
 }
-
 
 
 /*

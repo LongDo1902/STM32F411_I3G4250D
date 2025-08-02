@@ -1,11 +1,18 @@
 /*
- * spi.c
+ * @file	spi.c
+ * @brief	Low-level helpers for bit-masked accessm GPIO/AF setup and simple polling-mode
+ * 			transfer (single-byte and burst) suitable for MEMS sensors such as the I3G4250D
  *
- *  Created on: Jul 26, 2025
+ * Created on: Jul 26, 2025
  *      Author: dobao
  */
 #include "spi.h"
 
+/*
+ * =====================================================================
+ * Private Helpers - Register base address lookup
+ * =====================================================================
+ */
 static inline volatile spiRegOffset_t* spiBase(SPI_Name_t SPIx){
 	switch(SPIx){
 		case _SPI1:	return SPI1_REG;
@@ -13,19 +20,15 @@ static inline volatile spiRegOffset_t* spiBase(SPI_Name_t SPIx){
 		case _SPI3: return SPI3_REG;
 		case _SPI4:	return SPI4_REG;
 		case _SPI5:	return SPI5_REG;
-		default: return NULL;
+		default: return NULL; //Invalid enum value
 	}
 }
 
 
-
 /*
- * @brief	Generic masked write helper
- *
- * @param	reg				Pointer points to the register
- * @param	bitPosition		First bit of the field
- * @param	bitWidth		Field width in bits
- * @param	value			Field value (must fit in @p bitWidth)
+ * =====================================================================
+ * Generic Bit-field Private Helpers (write/read)
+ * =====================================================================
  */
 static inline void writeSPIBits(volatile uint32_t* reg, uint8_t bitPosition, uint8_t bitWidth, uint32_t value){
 	if(bitPosition > 31 || bitWidth > 32) return;
@@ -38,15 +41,6 @@ static inline void writeSPIBits(volatile uint32_t* reg, uint8_t bitPosition, uin
 	*reg = (*reg & ~mask) | shiftedVal;
 }
 
-
-
-/*
- * @brief	Read a field of "bitWidth" bits from a register starting at 'bitPosition'
- *
- * @param	reg			 	Pointer points to the register
- * @param	bitPosition		Starting bit position (0-31)
- * @param	bitWidth		Number of bits/bit size that fit @p value
- */
 static inline uint16_t readSPIBits(volatile uint32_t* reg, uint8_t bitPosition, uint8_t bitWidth){
 	if(bitWidth == 32) return *reg;
 	uint32_t mask = ((1U << bitWidth) - 1U);
@@ -54,16 +48,28 @@ static inline uint16_t readSPIBits(volatile uint32_t* reg, uint8_t bitPosition, 
 }
 
 
-
 /*
- *  @brief	This function configures bit to SPIx's mode
+ * =====================================================================
+ * Public Helpers - writeSPI
+ * 					readSPI
+ * 					SPI_readReceivedData
+ * 					SPI_readBuffer
+ * 					SPI_write2Device
+ * =====================================================================
+ */
+/*
+ *  @brief	This function configures bit to SPIx's register
  *
  *  @param	bitPosition		bit location that you want to write
  *  @param	SPIx			write my_SPI1 when you want to config SPI1
  *  @param	regName			choose specific SPI register to write bit
  *  @param	value			any value that < 32 bits
  */
-void writeSPI(uint8_t bitPosition, SPI_Name_t SPIx, SPI_Reg_t regName, uint32_t value){
+void writeSPI(uint8_t bitPosition,
+			  SPI_Name_t SPIx,
+			  SPI_Reg_t regName,
+			  uint32_t value){
+
 	volatile spiRegOffset_t* SPIx_p = spiBase(SPIx);
 	if(!SPIx_p) return; //Paranoia check
 
@@ -114,7 +120,13 @@ void writeSPI(uint8_t bitPosition, SPI_Name_t SPIx, SPI_Reg_t regName, uint32_t 
 }
 
 
-
+/*
+ *  @brief	This function reads and returns bit/status from SPIx's register
+ *
+ *  @param	bitPosition		bit location that you want to write
+ *  @param	SPIx			write my_SPI1 when you want to config SPI1
+ *  @param	regName			choose specific SPI register to write bit
+ */
 uint16_t readSPI(uint8_t bitPosition, SPI_Name_t SPIx, SPI_Reg_t regName){
 	const uint16_t ERROR = 0xFFFF;
 
@@ -166,7 +178,6 @@ uint16_t readSPI(uint8_t bitPosition, SPI_Name_t SPIx, SPI_Reg_t regName){
 }
 
 
-
 /*
  *	@brief		Reads a single byte of data from an SPI slave device using 8-bit full-duplex SPI
  *				Follows the standard SPI read protocol with a command phase and dummy-byte phase
@@ -177,7 +188,7 @@ uint16_t readSPI(uint8_t bitPosition, SPI_Name_t SPIx, SPI_Reg_t regName){
  *
  *	@return		Received byte from the SPI slave.
  */
-char SPI_readReceivedData(SPI_GPIO_Config_t config, char slaveDeviceAddr){
+char SPI_readReceivedData(SPI_GPIO_Config_t config, uint8_t slaveDeviceAddr){
 	//Parameters
 	const uint8_t READ_FLAG = (1 << 7); //I3G4250 Read Flag (Write 1 to bit 7)
 	const uint8_t DUMMYBYTE = 0xFF;
@@ -185,7 +196,7 @@ char SPI_readReceivedData(SPI_GPIO_Config_t config, char slaveDeviceAddr){
 	//Ensure NSS GPIO is clocked and configured as output
 //	writePin(config.nssPin, config.nssPort, ODR, my_GPIO_PIN_RESET); //Pull NSS pin low to activate the slave and begin communication
 	writePin(config.nssPin, config.nssPort, BSRR, my_GPIO_PIN_RESET); //Pull NSS pin low to activate the slave and begin communication
-	for(volatile int i = 0; i < 8; i++) __NOP(); //Add delay when BSRR is used
+	for(volatile int i = 0; i < 50; i++); //Add delay when BSRR is used
 
 	while((readSPI(7, config.SPIx, SPI_SR) & 1) == 1); //SPI is busy in communication or TX buffer is not empty
 	writeSPI(0, config.SPIx, SPI_DR, (slaveDeviceAddr | READ_FLAG)); //(1 << 7) is refered to L3GD20 gyro for reading mode
@@ -210,11 +221,66 @@ char SPI_readReceivedData(SPI_GPIO_Config_t config, char slaveDeviceAddr){
 }
 
 
+/*
+ * @brief	Brust-read a block of registers from an SPI slave
+ *
+ *			Keeps NSS low
+ *			Assigns command byte with READ (bit 7) and AUTO INCREMENT (bit 6) set
+ *			Then, clocks in 'len'consecutive data bytes into the caller's buffer
+ *
+ * @param	config		GPIO/SPI mapping for the target bus instance
+ * @param	startAddr	First register address to read (bit 0 to bit 5 only)
+ * @param 	rxBuf		Pointer to destination buffer that will receive 'len' bytes. Must not be NULL
+ * @param	len			Number of bytes to read; must be > 0
+ *
+ * @retVal	true	Transaction completed without any error
+ * 			false	Invalid arguments (len == 0 or rxBuf == NULL) or SPI busy / timeout detected during the transfer
+ */
+bool SPI_readBuffer(SPI_GPIO_Config_t config, uint8_t startAddr, char* rxBuf, uint8_t len){
+	if(len == 0u || rxBuf == NULL) return false;
+	const uint8_t dummyByte = 0xFFu;
+	const uint8_t cmd = startAddr | 0xC0u; //Read + auto increment addr
+
+	writePin(config.nssPin, config.nssPort, BSRR, my_GPIO_PIN_RESET);
+	for(volatile int i = 0; i < 25; i++);
+
+	while(readSPI(7, config.SPIx, SPI_SR) & 1u);
+	writeSPI(0, config.SPIx, SPI_DR, cmd);
+
+	/* Wait for command to shift out and & dummy to shift in */
+	while((readSPI(1, config.SPIx, SPI_SR) & 1u) == 0u); //Wait until TX buffer is empty
+	while((readSPI(7, config.SPIx, SPI_SR) & 1u) == 1u); //Wait until SPI is not busy
+	while((readSPI(0, config.SPIx, SPI_SR) & 1u) == 0u); //Wait until RX buffer is full data
+	(void)readSPI(0, config.SPIx, SPI_DR); //Read dummy data
+
+	/*
+	 * Start to loop through length and store received data(s) to the buffer
+	 */
+	for(volatile uint8_t i = 0; i < len; i++){
+		writeSPI(0, config.SPIx, SPI_DR, dummyByte); //Send dummy byte so the slave can send the actual data back
+
+		while((readSPI(1, config.SPIx, SPI_SR) & 1u) == 0u); //Wait until TX buffer is empty
+		while((readSPI(7, config.SPIx, SPI_SR) & 1u) == 1u); //Wait until SPI is not busy
+		while((readSPI(0, config.SPIx, SPI_SR) & 1u) == 0u); //Wait until RX buffer is full data
+
+		rxBuf[i] = (uint8_t)readSPI(0, config.SPIx, SPI_DR);
+	}
+	writePin(config.nssPin, config.nssPort, BSRR, my_GPIO_PIN_SET);
+	return true;
+}
+
 
 /*
+ * @brief	Write single register to the slave device at a specific register
  *
+ * @note	bit 7 of 'slaveDeviceAddr' must already be 0
+ *
+ * @retVal	true on success
+ * 			false on SPI busy/error time-out
  */
-void SPI_write2Device(SPI_GPIO_Config_t config, char slaveDeviceAddr, char writeValue){
+void SPI_write2Device(SPI_GPIO_Config_t config,
+					  uint8_t slaveDeviceAddr,
+					  uint8_t writeValue){
 	writePin(config.nssPin, config.nssPort, ODR, my_GPIO_PIN_RESET); //Pull NSS pin low to start communicating
 
 	while((readSPI(7, config.SPIx, SPI_SR) & 1) == 1); //SPI is busy in communicating or TX buffer is not yet empty
@@ -239,6 +305,15 @@ void SPI_write2Device(SPI_GPIO_Config_t config, char slaveDeviceAddr, char write
 
 
 /*
+ * ===========================================================================
+ * Public Main Functions	SPI_GPIO_init
+ * 							SPI_basicConfigInit
+ * 							SPI_mosiPin_init
+ * 							SPI_misoPin_init
+ * 							SPI_sckPin_init
+ * ===========================================================================
+ */
+/*
  *  @brief	Initializes the selected SPI peripheral and its SCK, MOSI, MISO pins.
  */
 void SPI_GPIO_init(SPI_GPIO_Config_t config){
@@ -253,7 +328,6 @@ void SPI_GPIO_init(SPI_GPIO_Config_t config){
 	SPI_mosiPin_init(config.mosiPin, config.mosiPort, config.SPIx);
 	SPI_misoPin_init(config.misoPin, config.misoPort, config.SPIx);
 }
-
 
 
 /*
@@ -280,7 +354,7 @@ void SPI_basicConfigInit(SPI_GPIO_Config_t config,
 						 SPI_BaudRate_t baudRateSel,
 						 SPI_SSM_t softSlaveEn,
 						 SPI_Enable_t enableMode){
-
+#if 0
 	//Flexible enable SPI clock
 	switch(config.SPIx){
 		case _SPI1: my_RCC_SPI1_CLK_ENABLE(); break; //100MHz
@@ -290,10 +364,16 @@ void SPI_basicConfigInit(SPI_GPIO_Config_t config,
 		case _SPI5: my_RCC_SPI5_CLK_ENABLE(); break; //100MHz
 		default: return;
 	}
-	/* --- SPI_basicConfigInit() --- */
-	writeSPI(1, config.SPIx, SPI_CR1, 1);   // CPOL = 1  (idle high)
-	writeSPI(0, config.SPIx, SPI_CR1, 1);   // CPHA = 1  (capture on 2nd edge)
-
+#else
+	switch(config.SPIx){
+		case _SPI1: __HAL_RCC_SPI1_CLK_ENABLE(); break;
+		case _SPI2: __HAL_RCC_SPI2_CLK_ENABLE(); break;
+		case _SPI3: __HAL_RCC_SPI3_CLK_ENABLE(); break;
+		case _SPI4: __HAL_RCC_SPI4_CLK_ENABLE(); break;
+		case _SPI5: __HAL_RCC_SPI5_CLK_ENABLE(); break;
+		default: return;
+	}
+#endif
 	writeSPI(2, config.SPIx, SPI_CR1, masterSlaveSel); //Set STM32F411VET as master or slave
 	writeSPI(11, config.SPIx, SPI_CR1, dataFrameSize); //Set data frame size (must be written before SPI is enabled)
 	writeSPI(3, config.SPIx, SPI_CR1, baudRateSel); //Set how fast sckPin can generate (Hz)
@@ -307,7 +387,6 @@ void SPI_basicConfigInit(SPI_GPIO_Config_t config,
 	//Enable SPI must be put after all other features are activated
 	writeSPI(6, config.SPIx, SPI_CR1, enableMode); //Disable or Enable SPI
 }
-
 
 
 /*
@@ -339,7 +418,6 @@ void SPI_misoPin_init(GPIO_Pin_t misoPin, GPIO_PortName_t misoPort, SPI_Name_t S
 }
 
 
-
 /*
  * @brief	Initializes the MOSI pin for a given SPI peripheral.
  * @param	mosiPin		SPI MOSI Pin
@@ -368,7 +446,6 @@ void SPI_mosiPin_init(GPIO_Pin_t mosiPin, GPIO_PortName_t mosiPort, SPI_Name_t S
 		writePin(mosiPin, mosiPort, afrRegMosi, AF5);
 	}
 }
-
 
 
 /*
