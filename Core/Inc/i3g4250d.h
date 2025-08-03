@@ -11,7 +11,10 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
+
 #include "stm32f4xx.h"
+#include "stm32f4xx_hal.h"
 #include "spi.h"
 
 
@@ -341,6 +344,8 @@ typedef enum{
  * -------------------------------------------------------
  */
 bool i3g4250d_init();
-
+bool i3g4250d_readRawData();
+void i3g4250d_calibrate(uint16_t sampleCount);
+void i3g4250d_updateAngle(void);
 
 #endif /* INC_I3G4250D_H_ */

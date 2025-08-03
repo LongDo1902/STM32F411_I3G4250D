@@ -102,9 +102,9 @@ uint16_t readSPI(uint8_t bitPosition,
 char SPI_readReceivedData(SPI_GPIO_Config_t config,
 						  uint8_t slaveDeviceAddr);
 
-bool SPI_readBuffer(SPI_GPIO_Config_t config,
+bool SPI_readBurstBuf(SPI_GPIO_Config_t config,
 					uint8_t startAddr,
-					char* rxBuf,
+					uint8_t* rxBuf,
 					uint8_t len);
 
 void SPI_write2Device(SPI_GPIO_Config_t config,

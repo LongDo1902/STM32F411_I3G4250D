@@ -236,7 +236,7 @@ char SPI_readReceivedData(SPI_GPIO_Config_t config, uint8_t slaveDeviceAddr){
  * @retVal	true	Transaction completed without any error
  * 			false	Invalid arguments (len == 0 or rxBuf == NULL) or SPI busy / timeout detected during the transfer
  */
-bool SPI_readBuffer(SPI_GPIO_Config_t config, uint8_t startAddr, char* rxBuf, uint8_t len){
+bool SPI_readBurstBuf(SPI_GPIO_Config_t config, uint8_t startAddr, uint8_t* rxBuf, uint8_t len){
 	if(len == 0u || rxBuf == NULL) return false;
 	const uint8_t dummyByte = 0xFFu;
 	const uint8_t cmd = startAddr | 0xC0u; //Read + auto increment addr
@@ -261,7 +261,7 @@ bool SPI_readBuffer(SPI_GPIO_Config_t config, uint8_t startAddr, char* rxBuf, ui
 
 		while((readSPI(1, config.SPIx, SPI_SR) & 1u) == 0u); //Wait until TX buffer is empty
 		while((readSPI(7, config.SPIx, SPI_SR) & 1u) == 1u); //Wait until SPI is not busy
-		while((readSPI(0, config.SPIx, SPI_SR) & 1u) == 0u); //Wait until RX buffer is full data
+		while((readSPI(0, config.SPIx, SPI_SR) & 1u) == 0u); //Wait until RX buffer is full dataFrameSize
 
 		rxBuf[i] = (uint8_t)readSPI(0, config.SPIx, SPI_DR);
 	}

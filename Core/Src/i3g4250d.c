@@ -26,6 +26,16 @@ SPI_GPIO_Config_t i3g4250d_spiConfig = {
 		.misoPort = my_GPIOA
 };
 
+typedef struct{
+	int16_t rawX, rawY, rawZ;
+	int16_t	biasX, biasY, biasZ;
+	float sensitivity_mdps;
+	float dpsX, dpsY, dpsZ;
+}Gyro_Context_t;
+
+static Gyro_Context_t gyroContext; //Global instance
+
+static float rollAngle = 0, pitchAngle = 0, yawAngle = 0;
 
 /*
  * -------------------------------------------
@@ -41,10 +51,13 @@ static char i3g4250d_regRead(char regAddr){
 	return SPI_readReceivedData(i3g4250d_spiConfig, regAddr);
 }
 
+static bool i3g4250d_regReadBurst(uint8_t startAddr, uint8_t *buf, uint8_t len){
+	return SPI_readBurstBuf(i3g4250d_spiConfig, startAddr, buf, len);
+}
+
 static void i3g4250d_regWrite(char regAddr, char value){
 	SPI_write2Device(i3g4250d_spiConfig, regAddr, value);
 }
-
 
 /*
  * -------------------------------------------
@@ -52,6 +65,8 @@ static void i3g4250d_regWrite(char regAddr, char value){
  * -------------------------------------------
  */
 bool i3g4250d_init(){
+	gyroContext.sensitivity_mdps = 70; //Check mechanical characteristic section datasheet of I3G4250D
+
 	bool retVal = false;
 	uint8_t temp = 0;
 
@@ -97,6 +112,106 @@ bool i3g4250d_init(){
 exit:
 	return retVal;
 }
+
+
+/*
+ * @brief	Burst-read six data bytes
+ */
+bool i3g4250d_readRawData(){
+	uint8_t buf[6];
+	if(!i3g4250d_regReadBurst(I3G4250D_OUT_X_L, buf, 6)) {
+		return false;
+	}
+
+	gyroContext.rawX = (int16_t) ((buf[1] << 8) | buf[0]);
+	gyroContext.rawY = (int16_t) ((buf[3] << 8) | buf[2]);
+	gyroContext.rawZ = (int16_t) ((buf[5] << 8) | buf[4]);
+	return true;
+}
+
+
+/*
+ * @brief	Calibrate the sensor to find out the biasX, biasY, biasZ
+ */
+void i3g4250d_calibrate(uint16_t sampleCount){
+	int32_t sumX = 0, sumY = 0, sumZ = 0;
+	for(uint16_t i = 0; i < sampleCount; i++){
+		if(i3g4250d_readRawData()){
+			sumX += gyroContext.rawX;
+			sumY += gyroContext.rawY;
+			sumZ += gyroContext.rawZ;
+		}
+		HAL_Delay(4);
+	}
+	gyroContext.biasX = sumX / sampleCount;
+	gyroContext.biasY = sumY / sampleCount;
+	gyroContext.biasZ = sumZ / sampleCount;
+}
+
+
+/*
+ * @brief	Convert raw counts (rawX,Y,Z) to degree per sec (dps)
+ */
+static void i3g4250d_convertRawToDps(void){
+	const float k = gyroContext.sensitivity_mdps * 0.001f; //Convert mdps to dps
+	gyroContext.dpsX = (gyroContext.rawX - gyroContext.biasX) * k;
+	gyroContext.dpsY = (gyroContext.rawY - gyroContext.biasY) * k;
+	gyroContext.dpsZ = (gyroContext.rawZ - gyroContext.biasZ) * k;
+}
+
+
+/*
+ *
+ */
+bool i3g4250d_getDps(float *xDps, float *yDps, float *zDps){
+	if(!i3g4250d_readRawData()) return false;
+
+	i3g4250d_convertRawToDps();
+	*xDps = gyroContext.dpsX;
+	*yDps = gyroContext.dpsY;
+	*zDps = gyroContext.dpsZ;
+	return true;
+}
+
+
+void i3g4250d_updateAngle(void){
+	static uint32_t lastTick = 0;
+	uint32_t currentTick = HAL_GetTick();
+
+	if(lastTick == 0){
+		lastTick = currentTick;
+		return;
+	}
+
+	float dt = (currentTick - lastTick) * 0.001f; //ms -> s
+	lastTick = currentTick;
+
+	float gx, gy, gz;
+	if(!i3g4250d_getDps(&gx, &gy, &gz)) return;
+
+	rollAngle = rollAngle + (gx * dt);
+	pitchAngle = pitchAngle + (gy * dt);
+	yawAngle = yawAngle + (gz * dt);
+
+	if(rollAngle > 180) rollAngle -= 360;
+	if(rollAngle < -180) rollAngle += 360;
+
+	if(pitchAngle > 180) pitchAngle -= 360;
+	if(pitchAngle < -180) pitchAngle += 360;
+
+	if(yawAngle > 180) yawAngle -= 360;
+	if(yawAngle < -180) yawAngle += 360;
+}
+
+
+
+
+
+
+
+
+
+
 
 
 
