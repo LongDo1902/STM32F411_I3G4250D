@@ -363,12 +363,28 @@ void UART_Init(GPIO_Pin_t TXPin,
 	}else{
 		return;
 	}
-
-	writeUART(5, uartName, UART_CR1, SET); //Enable receive interrupt
 	writeUART(13, uartName, UART_CR1, 1); //Enable UART
+}
+
+
+void UART_RX_Interrupt_Enable(UART_Name_t uartName){
+	writeUART(5, uartName, UART_CR1, SET);
+	NVIC_enableIRQ(UART1); //Position 37 in vector table
+}
+void UART_TX_Interrupt_Enable(UART_Name_t uartName){
+	writeUART(7, uartName, UART_CR1, SET);
 	NVIC_enableIRQ(UART1); //Position 37 in vector table
 }
 
+void UART_RX_Interrupt_Disable(UART_Name_t uartName){
+	writeUART(5, uartName, UART_CR1, RESET);
+	NVIC_disableIRQ(UART1);
+}
+
+void UART_TX_Interrupt_Disable(UART_Name_t uartName){
+	writeUART(7, uartName, UART_CR1, RESET);
+	NVIC_disableIRQ(UART1);
+}
 
 
 /*

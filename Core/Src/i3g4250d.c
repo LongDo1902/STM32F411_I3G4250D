@@ -8,9 +8,9 @@
 #include "i3g4250d.h"
 
 /*
- * @brief	SPI configuration of I3G4250D on STM32F411 DISCO board
+ * Assign suitable SPI/GPIO configurations of I3G4250D on STM32F411 Disco board
  */
-SPI_GPIO_Config_t i3g4250d_spiConfig = {
+const SPI_GPIO_Config_t i3g4250d_Config = {
 		.SPIx = _SPI1,
 
 		.sckPin = my_GPIO_PIN_5,
@@ -26,192 +26,128 @@ SPI_GPIO_Config_t i3g4250d_spiConfig = {
 		.misoPort = my_GPIOA
 };
 
-typedef struct{
-	int16_t rawX, rawY, rawZ;
-	int16_t	biasX, biasY, biasZ;
-	float sensitivity_mdps;
-	float dpsX, dpsY, dpsZ;
-}Gyro_Context_t;
+typedef struct {
+	uint16_t rawX, rawY, rawZ;
+	float gyroSensitivity;
+}gyroRawCnt_t;
 
-static Gyro_Context_t gyroContext; //Global instance
-
-static float rollAngle = 0, pitchAngle = 0, yawAngle = 0;
+gyroRawCnt_t gyroRaw;
 
 /*
- * -------------------------------------------
- * Help functions
- * -------------------------------------------
+ * =============================================================
+ * Private Helpers
+ * =============================================================
  */
-static void i3g4250d_gpioInit(void){
-	SPI_GPIO_init(i3g4250d_spiConfig);
-	SPI_basicConfigInit(i3g4250d_spiConfig, STM32_AS_MASTER, DFF_8BITS, FPCLK_DIV16, SOFTWARE_SLAVE_ENABLE, SPI_ENABLE);
+static inline uint8_t i3g4250d_readRegUnsigned(uint8_t regAddr){
+	return SPI_readRegUnsigned(&i3g4250d_Config, regAddr);
 }
 
-static char i3g4250d_regRead(char regAddr){
-	return SPI_readReceivedData(i3g4250d_spiConfig, regAddr);
+static inline int8_t i3g4250d_readRegSigned(uint8_t regAddr){
+	return SPI_readRegSigned(&i3g4250d_Config, regAddr);
 }
 
-static bool i3g4250d_regReadBurst(uint8_t startAddr, uint8_t *buf, uint8_t len){
-	return SPI_readBurstBuf(i3g4250d_spiConfig, startAddr, buf, len);
+static inline void i3g4250d_readRegBurst(uint8_t startRegAddr, uint8_t *rxBuf, uint8_t len){
+	SPI_readRegBurst(&i3g4250d_Config, startRegAddr, rxBuf, len);
 }
 
-static void i3g4250d_regWrite(char regAddr, char value){
-	SPI_write2Device(i3g4250d_spiConfig, regAddr, value);
+static inline void i3g4250d_writeReg(uint8_t regAddr, uint8_t writeValue){
+	SPI_writeReg(&i3g4250d_Config, regAddr, writeValue);
 }
+
+static inline bool i3g4250d_checkRegStatus(uint8_t regAddr, uint8_t cmpVal){
+	if(i3g4250d_readRegUnsigned(regAddr) == cmpVal) return true;
+	else return false;
+}
+
 
 /*
- * -------------------------------------------
- * Public APIs
- * -------------------------------------------
+ * =============================================================
+ * Public Helpers
+ * =============================================================
  */
-bool i3g4250d_init(){
-	gyroContext.sensitivity_mdps = 70; //Check mechanical characteristic section datasheet of I3G4250D
 
+/*
+ * Generally initialize all SPI features/configurations for I3G4250D to work
+ */
+void i3g4250dGPIO_init(void){
+	SPI_GPIO_init(&i3g4250d_Config);
+	SPI_basicConfigInit(&i3g4250d_Config, STM32_AS_MASTER, DFF_8BITS, FPCLK_DIV16, SOFTWARE_SLAVE_ENABLE);
+}
+
+
+bool i3g4250d_init(initConfig_t filterEn, initConfig_t fifoEn){
 	bool retVal = false;
-	uint8_t temp = 0;
+	gyroRaw.gyroSensitivity = 70 * 0.001; //70mdps to 0.07dps
 
-	i3g4250d_gpioInit();
+	/* Initialize SPI for I3G4250D */
+	i3g4250dGPIO_init();
 
-	/* Verify chip identity	 */
-	temp = i3g4250d_regRead(I3G4250D_WHO_AM_I);
-	if(temp != 0xD3) goto exit; //Sensor not found
+	/* Confirm the sensor and verify if the sensor replies a correct value which has to be 0xD3 */
+	uint8_t id = i3g4250d_readRegUnsigned(I3G4250D_WHO_AM_I);
+	if(id != 0xD3) goto exit; //Sensor is not found
 
-	/* Software reboot */
-	i3g4250d_regWrite(I3G4250D_CTRL_REG5, I3G4250D_REBOOT);
-	HAL_Delay(5);
-
-	/* CTRL_REG1: PD = 1,  ODR = 800, Cutoff = 35Hz, enable all axes*/
-	temp = I3G4250D_PD_ACTIVE | (ODR_800_BW_35 << I3G4250D_BW_POS) | I3G4250D_XEN | I3G4250D_YEN | I3G4250D_ZEN;
-	i3g4250d_regWrite(I3G4250D_CTRL_REG1, temp);
-
-	/* CTRL_REG4: +- 2000dps, 4-wire SPI, LSB @ lower address */
-	temp = I3G4250D_SPI_4_WIRE | (DPS_2000 << I3G4250D_FULL_SCALE_SEL_POS) | I3G4250D_BLE_LSB_AT_LOW;
-	i3g4250d_regWrite(I3G4250D_CTRL_REG4, temp);
-
-	/* CTRL_REG3: route DRDY to INT2 */
-	temp = I3G4250D_INT2_DRDY_ENABLE;
-	i3g4250d_regWrite(I3G4250D_CTRL_REG3, temp);
+	i3g4250d_writeReg(I3G4250D_CTRL_REG5, I3G4250D_REBOOT); //Reboot memory content
+	while(i3g4250d_readRegUnsigned(I3G4250D_CTRL_REG5) & I3G4250D_REBOOT); //Wait until sensor reboot process completely done
 
 	/*
-	 * CTRL_REG5: disable HPF and boot normal
+	 * Configure CTRL_REG1
+	 * Enable XYZ, Enable Power, ODR = 800Hz, BandWidth = 30Hz
 	 */
-	temp = I3G4250D_HIGHPASS_DISABLE | I3G4250D_FIFO_DISABLE | I3G4250D_BOOT_NORMAL;
-	i3g4250d_regWrite(I3G4250D_CTRL_REG5, temp);
+	uint8_t ctrlReg1 = I3G4250D_XEN |
+					   I3G4250D_YEN |
+					   I3G4250D_ZEN |
+					   I3G4250D_PD_ACTIVE |
+					   (ODR_800_BW_30 << I3G4250D_BW_POS);
+	i3g4250d_writeReg(I3G4250D_CTRL_REG1, ctrlReg1);
+	if(!i3g4250d_checkRegStatus(I3G4250D_CTRL_REG1, ctrlReg1)) goto exit;
+
+	/* Configure CTRL_REG4 */
+	uint8_t ctrlReg4 = I3G4250D_SPI_4_WIRE |
+					   (DPS_2000 << I3G4250D_FULL_SCALE_SEL_POS) |
+					   I3G4250D_BLE_LSB_AT_LOW;
+	i3g4250d_writeReg(I3G4250D_CTRL_REG4, ctrlReg4);
+	if(!i3g4250d_checkRegStatus(I3G4250D_CTRL_REG4, ctrlReg4)) goto exit;
+
+	if(filterEn == FILTER_ENABLE){
+		/*
+		 * CTRL_REG2
+		 * HPM -> Normal mode
+		 * High-pass cutoff freq = 0.5Hz
+		 */
+		uint8_t ctrlReg2 = (HPM_NORMAL_MODE << I3G4250D_HPM_POS) |
+						   (HPCF7 << I3G4250D_HPCF_POS);
+		i3g4250d_writeReg(I3G4250D_CTRL_REG2, ctrlReg2);
+	}
 
 	/*
-	 * Clear any pending INT1 source flags by reading INT1_SRC -> reset latches
+	 * Config CTRL_REG5
+	 * 		HPF route + FIFO enable
 	 */
-	(void)i3g4250d_regRead(I3G4250D_INT1_SRC);
+	uint8_t ctrlReg5 = i3g4250d_readRegUnsigned(I3G4250D_CTRL_REG5);
+	uint8_t ctrlReg3 = i3g4250d_readRegUnsigned(I3G4250D_CTRL_REG3);
 
-	if(i3g4250d_regRead(I3G4250D_CTRL_REG1) != (I3G4250D_PD_ACTIVE |
-											   (ODR_800_BW_35 << I3G4250D_BW_POS) |
-											   I3G4250D_XEN | I3G4250D_YEN | I3G4250D_ZEN)) goto exit;
-	/* Success */
+	if(filterEn == FILTER_ENABLE){
+		ctrlReg5 |= (LPF1_HPF << I3G4250D_OUT_SEL_POS) |
+					(LPF1_HPF_INT1 << I3G4250D_INT1_SEL_POS) |
+					(I3G4250D_HIGHPASS_ENABLE);
+	}
+	if(fifoEn == FIFO_ENABLE){
+		ctrlReg5 |= I3G4250D_FIFO_ENABLE;
+		ctrlReg3 |= I3G4250D_INT2_FIFO_WTM_ENABLE;
+	}
+	i3g4250d_writeReg(I3G4250D_CTRL_REG5, ctrlReg5);
+	if(!i3g4250d_checkRegStatus(I3G4250D_CTRL_REG5, ctrlReg5)) goto exit;
+
+	/*
+	 * Configure CTRL_REG3
+	 * Data ready on DRDY/INT2 enable, Enable interrupt on INT1 pin
+	 */
+	i3g4250d_writeReg(I3G4250D_CTRL_REG3, ctrlReg3);
+
+	(void)i3g4250d_readRegUnsigned(I3G4250D_REFERENCE);
+	HAL_Delay(2); // 1/ 800Hz = 0.00125s
+
 	retVal = true;
-
 exit:
 	return retVal;
 }
-
-
-/*
- * @brief	Burst-read six data bytes
- */
-bool i3g4250d_readRawData(){
-	uint8_t buf[6];
-	if(!i3g4250d_regReadBurst(I3G4250D_OUT_X_L, buf, 6)) {
-		return false;
-	}
-
-	gyroContext.rawX = (int16_t) ((buf[1] << 8) | buf[0]);
-	gyroContext.rawY = (int16_t) ((buf[3] << 8) | buf[2]);
-	gyroContext.rawZ = (int16_t) ((buf[5] << 8) | buf[4]);
-	return true;
-}
-
-
-/*
- * @brief	Calibrate the sensor to find out the biasX, biasY, biasZ
- */
-void i3g4250d_calibrate(uint16_t sampleCount){
-	int32_t sumX = 0, sumY = 0, sumZ = 0;
-	for(uint16_t i = 0; i < sampleCount; i++){
-		if(i3g4250d_readRawData()){
-			sumX += gyroContext.rawX;
-			sumY += gyroContext.rawY;
-			sumZ += gyroContext.rawZ;
-		}
-		HAL_Delay(4);
-	}
-	gyroContext.biasX = sumX / sampleCount;
-	gyroContext.biasY = sumY / sampleCount;
-	gyroContext.biasZ = sumZ / sampleCount;
-}
-
-
-/*
- * @brief	Convert raw counts (rawX,Y,Z) to degree per sec (dps)
- */
-static void i3g4250d_convertRawToDps(void){
-	const float k = gyroContext.sensitivity_mdps * 0.001f; //Convert mdps to dps
-	gyroContext.dpsX = (gyroContext.rawX - gyroContext.biasX) * k;
-	gyroContext.dpsY = (gyroContext.rawY - gyroContext.biasY) * k;
-	gyroContext.dpsZ = (gyroContext.rawZ - gyroContext.biasZ) * k;
-}
-
-
-/*
- *
- */
-bool i3g4250d_getDps(float *xDps, float *yDps, float *zDps){
-	if(!i3g4250d_readRawData()) return false;
-
-	i3g4250d_convertRawToDps();
-	*xDps = gyroContext.dpsX;
-	*yDps = gyroContext.dpsY;
-	*zDps = gyroContext.dpsZ;
-	return true;
-}
-
-
-void i3g4250d_updateAngle(void){
-	static uint32_t lastTick = 0;
-	uint32_t currentTick = HAL_GetTick();
-
-	if(lastTick == 0){
-		lastTick = currentTick;
-		return;
-	}
-
-	float dt = (currentTick - lastTick) * 0.001f; //ms -> s
-	lastTick = currentTick;
-
-	float gx, gy, gz;
-	if(!i3g4250d_getDps(&gx, &gy, &gz)) return;
-
-	rollAngle = rollAngle + (gx * dt);
-	pitchAngle = pitchAngle + (gy * dt);
-	yawAngle = yawAngle + (gz * dt);
-
-	if(rollAngle > 180) rollAngle -= 360;
-	if(rollAngle < -180) rollAngle += 360;
-
-	if(pitchAngle > 180) pitchAngle -= 360;
-	if(pitchAngle < -180) pitchAngle += 360;
-
-	if(yawAngle > 180) yawAngle -= 360;
-	if(yawAngle < -180) yawAngle += 360;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-

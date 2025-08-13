@@ -20,6 +20,15 @@
 
 #define I3G4250D_SPI_READ	0x80u
 
+typedef enum{
+	FILTER_ENABLE,
+	FILTER_DISABLE,
+
+	FIFO_ENABLE,
+	FIFO_DISABLE
+}initConfig_t;
+
+
 
 /*
  * ---------------------------------------------------------
@@ -74,7 +83,7 @@
 #define I3G4250D_YEN			(1U << 1)
 #define I3G4250D_ZEN			(1U << 2)
 #define I3G4250D_PD_ACTIVE		(1U << 3) //PD = 1 (sleep or normal)
-#define I3G4250D_BW_POS	4
+#define I3G4250D_BW_POS			4
 
 typedef enum{
 	ODR_100_BW_12_5		= 0b00,
@@ -132,11 +141,11 @@ typedef enum{
  * CTRL_REG3 (0x22) bit-fields
  * --------------------------------------------------------
  */
-#define I3G4250D_INT2_FIFO_EMPTY_DISABLE		(0U << 0)
-#define I3G4250D_INT2_FIFO_EMPTY_ENABLE			(1U << 0)
+#define I3G4250D_INT2_FIFO_EMPTY_DISABLE	(0U << 0)
+#define I3G4250D_INT2_FIFO_EMPTY_ENABLE		(1U << 0)
 
-#define I3G4250D_INT2_FIFO_ORUN_DISABLE	(0U << 1)
-#define I3G4250D_INT2_FIFO_ORUN_ENABLE	(1U << 1)
+#define I3G4250D_INT2_FIFO_ORUN_DISABLE		(0U << 1)
+#define I3G4250D_INT2_FIFO_ORUN_ENABLE		(1U << 1)
 
 #define I3G4250D_INT2_FIFO_WTM_DISABLE	(0U << 2)
 #define I3G4250D_INT2_FIFO_WTM_ENABLE	(1U << 2)
@@ -144,8 +153,8 @@ typedef enum{
 #define I3G4250D_INT2_DRDY_DISABLE		(0U << 3)
 #define I3G4250D_INT2_DRDY_ENABLE		(1U << 3)
 
-#define I3G4250D_PUSH_PULL	(0U << 4)
-#define I3G4250D_OPEN_DRAIN	(1U << 4)
+#define I3G4250D_PUSH_PULL		(0U << 4)
+#define I3G4250D_OPEN_DRAIN		(1U << 4)
 
 #define I3G4250D_INT1_INTERRUPT_ACTIVE_HIGH	(0U << 5)
 #define I3G4250D_INT1_INTERRUPT_ACTIVE_LOW	(1U << 5)
@@ -343,9 +352,8 @@ typedef enum{
  * Public APIs
  * -------------------------------------------------------
  */
-bool i3g4250d_init();
-bool i3g4250d_readRawData();
-void i3g4250d_calibrate(uint16_t sampleCount);
-void i3g4250d_updateAngle(void);
+bool i3g4250d_init(initConfig_t filterEn, initConfig_t fifoEn);
+bool i3g4250d_filterInit();
+bool i3g4250d_fifoInit();
 
 #endif /* INC_I3G4250D_H_ */
