@@ -12,6 +12,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <math.h>
 
 #include "stm32f4xx.h"
 #include "stm32f4xx_hal.h"
@@ -19,6 +20,10 @@
 
 
 #define I3G4250D_SPI_READ	0x80u
+#define I3G4250_ODR_800		800.0f
+#define DT_SAMPLE			(1.0f / I3G4250_ODR_800)
+#define DEG2RAD				(3.14159 / 180.0f)
+#define RAD2DEG				(180.0f / 3.14159)
 
 typedef enum{
 	FILTER_ENABLE,
@@ -27,8 +32,6 @@ typedef enum{
 	FIFO_ENABLE,
 	FIFO_DISABLE
 }initConfig_t;
-
-
 
 /*
  * ---------------------------------------------------------
@@ -352,8 +355,12 @@ typedef enum{
  * Public APIs
  * -------------------------------------------------------
  */
-bool i3g4250d_init(initConfig_t filterEn, initConfig_t fifoEn);
-bool i3g4250d_filterInit();
-bool i3g4250d_fifoInit();
+bool i3g4250d_init();
+bool i3g4250d_calibrate(uint16_t sampleCount);
+bool i3g4250d_enable_HPF_FIFO(FIFO_Mode_Config_t fifoMode, uint8_t watermark);
+bool i3g4250d_enable_HPF(void);
+bool i3g4250d_getGps(float *xDps, float *yDps, float *zDps);
+bool i3g4250d_route_LPF(void);
+bool i3g4250d_getAngle(float *roll, float *pitch, float *yaw);
 
 #endif /* INC_I3G4250D_H_ */

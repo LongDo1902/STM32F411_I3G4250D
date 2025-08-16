@@ -233,7 +233,7 @@ uint8_t SPI_readRegUnsigned(const SPI_GPIO_Config_t *config, uint8_t regAddr){
 	const uint8_t DUMMYBYTE = 0xFFu;
 
 	writePin(config -> nssPin, config -> nssPort, BSRR, my_GPIO_PIN_RESET); //Pull NSS pin low to activate the slave and begin communication
-	for(volatile uint32_t i = 0; i < 50; i++); //Add delay when BSRR is used
+	for(volatile uint32_t i = 0; i < 25; i++); //Add delay when BSRR is used
 
 	//Issue register address
 	while((readSPI(SPI_SR_BSY_POS, config -> SPIx, SPI_SR) & 1) == 1); //SPI is busy in communication or TX buffer is not empty
@@ -278,7 +278,7 @@ int8_t SPI_readRegSigned(const SPI_GPIO_Config_t *config, uint8_t regAddr){
  */
 bool SPI_readRegBurst(const SPI_GPIO_Config_t *config, uint8_t startRegAddr, uint8_t *rxBuf, uint8_t len){
 	if(len == 0 || rxBuf == NULL) return false;
-	const uint8_t dummyByte = 0xFF;
+	const uint8_t dummyByte = 0xFFu;
 	const uint8_t cmd = (startRegAddr | 0xC0u); //Register Address + (read + auto increment bits)
 
 	/* Set chip select pin low to start the transaction */
