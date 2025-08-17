@@ -15,18 +15,28 @@
 #include "uart.h"
 #include "i3g4250d.h"
 
+//static float angularX = 0;
+//static float angularY = 0;
+//static float angularZ = 0;
 
-static float roll = 0;
-static float pitch = 0;
-static float yaw = 0;
+static float rollAngle = 0;
+static float pitchAngle = 0;
+static float yawAngle = 0;
+
+float sampleRate = 200; //Hz
+
 /* ------------------------------------------------------------------------------------ */
 int main(void){
 	HAL_Init();
-	i3g4250d_init();
-	i3g4250d_route_LPF();
-	i3g4250d_calibrate(300);
+	ledGreenInit();
+	if(i3g4250d_init());
+	i3g4250d_LPF_enable();
+	i3g4250d_calibrate(500);
+	i3g4250d_softLPF_config(2, sampleRate); //2Hz more smooth but more lag, 10Hz more responsive but more wiggle
 
 	while(1){
-		i3g4250d_getAngle(&roll, &pitch, &yaw);
+//		i3g4250d_angularVelocityFiltered(&angularX, &angularY, &angularZ);
+//		i3g4250d_angularVelocity(&angularX, &angularY, &angularZ);
+		i3g4250d_getAngle(&rollAngle, &pitchAngle, &yawAngle, sampleRate);
 	}
 }

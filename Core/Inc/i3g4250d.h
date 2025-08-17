@@ -25,14 +25,6 @@
 #define DEG2RAD				(3.14159 / 180.0f)
 #define RAD2DEG				(180.0f / 3.14159)
 
-typedef enum{
-	FILTER_ENABLE,
-	FILTER_DISABLE,
-
-	FIFO_ENABLE,
-	FIFO_DISABLE
-}initConfig_t;
-
 /*
  * ---------------------------------------------------------
  * Core Register Address
@@ -86,6 +78,7 @@ typedef enum{
 #define I3G4250D_YEN			(1U << 1)
 #define I3G4250D_ZEN			(1U << 2)
 #define I3G4250D_PD_ACTIVE		(1U << 3) //PD = 1 (sleep or normal)
+#define I3G4250D_PD_INACTIVE	(0U << 3)
 #define I3G4250D_BW_POS			4
 
 typedef enum{
@@ -150,14 +143,14 @@ typedef enum{
 #define I3G4250D_INT2_FIFO_ORUN_DISABLE		(0U << 1)
 #define I3G4250D_INT2_FIFO_ORUN_ENABLE		(1U << 1)
 
-#define I3G4250D_INT2_FIFO_WTM_DISABLE	(0U << 2)
-#define I3G4250D_INT2_FIFO_WTM_ENABLE	(1U << 2)
+#define I3G4250D_INT2_FIFO_WTM_DISABLE		(0U << 2)
+#define I3G4250D_INT2_FIFO_WTM_ENABLE		(1U << 2)
 
-#define I3G4250D_INT2_DRDY_DISABLE		(0U << 3)
-#define I3G4250D_INT2_DRDY_ENABLE		(1U << 3)
+#define I3G4250D_INT2_DRDY_DISABLE			(0U << 3)
+#define I3G4250D_INT2_DRDY_ENABLE			(1U << 3)
 
-#define I3G4250D_PUSH_PULL		(0U << 4)
-#define I3G4250D_OPEN_DRAIN		(1U << 4)
+#define I3G4250D_PUSH_PULL					(0U << 4)
+#define I3G4250D_OPEN_DRAIN					(1U << 4)
 
 #define I3G4250D_INT1_INTERRUPT_ACTIVE_HIGH	(0U << 5)
 #define I3G4250D_INT1_INTERRUPT_ACTIVE_LOW	(1U << 5)
@@ -165,8 +158,8 @@ typedef enum{
 #define I3G4250D_INT1_BOOT_STATUS_DISABLE	(0U << 6)
 #define I3G4250D_INT1_BOOT_STATUS_ENABLE	(1U << 6)
 
-#define I3G4250D_INT1_DISABLE		(0U << 7)
-#define I3G4250D_INT1_ENABLE		(1U << 7)
+#define I3G4250D_INT1_DISABLE				(0U << 7)
+#define I3G4250D_INT1_ENABLE				(1U << 7)
 
 
 /*
@@ -180,8 +173,15 @@ typedef enum{
 #define I3G4250D_BLE_LSB_AT_LOW	(0U << 6)
 #define I3G4250D_BLE_MSB_AT_LOW (1U << 6)
 
+#define I3G4250D_SPI_INTERFACE_POS		0
 #define I3G4250D_SELF_TEST_CONFIG_POS	1
 #define I3G4250D_FULL_SCALE_SEL_POS		4
+#define I3G4250D_BLE_POS				6
+
+typedef enum{
+	SPI_4WIRE,
+	SPI_3WIRE
+}SPI_serial_t;
 
 /*
  * DST = Self-test Output Change
@@ -202,6 +202,11 @@ typedef enum{
 	DPS_2000 = 0b10
 }Full_Scale_Sel_t;
 
+typedef enum{
+	BLE_LSB_AT_LOW,
+	BLE_MSB_AT_LOW
+}BLE_t;
+
 
 /*
 * --------------------------------------------------------
@@ -210,6 +215,8 @@ typedef enum{
 */
 #define I3G4250D_OUT_SEL_POS	0
 #define I3G4250D_INT1_SEL_POS	2
+#define I3G4250D_HPF_POS		4
+#define I3G4250D_FIFO_POS		5
 
 #define I3G4250D_HIGHPASS_DISABLE	(0U << 4)
 #define I3G4250D_HIGHPASS_ENABLE	(1U << 4)
@@ -234,6 +241,15 @@ typedef enum{
 	LPF1_HPF_LPF2_INT1 = 0b11
 }INT1_Sel_t;
 
+typedef enum{
+	HPF_DISABLE,
+	HPF_ENABLE
+}HPF_Enable_t;
+
+typedef enum{
+	FIFO_DISABLE,
+	FIFO_ENABLE
+}FIFO_Enable_t;
 
 /*
 * --------------------------------------------------------
@@ -356,11 +372,17 @@ typedef enum{
  * -------------------------------------------------------
  */
 bool i3g4250d_init();
+
+bool i3g4250d_HPF_enable(I3G4250D_HPCF_t highPassCutoffFreq,
+						 I3G4250D_HPM_t highPassMode,
+						 Out_Sel_t outSel,
+						 INT1_Sel_t int1Sel);
+
+bool i3g4250d_LPF_enable(void);
+bool i3g4250d_angularVelocity(float *angularX, float *angularY, float *angularZ);
 bool i3g4250d_calibrate(uint16_t sampleCount);
-bool i3g4250d_enable_HPF_FIFO(FIFO_Mode_Config_t fifoMode, uint8_t watermark);
-bool i3g4250d_enable_HPF(void);
-bool i3g4250d_getGps(float *xDps, float *yDps, float *zDps);
-bool i3g4250d_route_LPF(void);
-bool i3g4250d_getAngle(float *roll, float *pitch, float *yaw);
+void i3g4250d_softLPF_config(float cutoffFreq, float sampleHz);
+bool i3g4250d_angularVelocityFiltered(float *angularX, float *angularY, float *angularZ);
+void i3g4250d_getAngle(float *rollAngle, float *pitchAngle, float *yawAngle, float sampleRate);
 
 #endif /* INC_I3G4250D_H_ */
