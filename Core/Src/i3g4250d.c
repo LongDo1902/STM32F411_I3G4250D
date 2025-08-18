@@ -450,11 +450,20 @@ void i3g4250d_getAngle(float *rollAngle, float *pitchAngle, float *yawAngle, flo
 	*rollAngle += angularX * dt; //Unit is degree
 	*pitchAngle += angularY * dt;
 	*yawAngle += angularZ * dt;
+
+	if(*rollAngle > 180) 	*rollAngle -= 360;
+	if(*rollAngle < -180) 	*rollAngle += 360;
+
+	if(*pitchAngle > 180) 	*pitchAngle -= 360;
+	if(*pitchAngle < -180) 	*pitchAngle += 360;
+
+	if(*yawAngle > 180) 	*yawAngle -= 360;
+	if(*yawAngle < -180) 	*yawAngle += 360;
 }
 
 /*
  * ====================================================
- * FILTERS
+ * SOFTWARE LOWPASS FILTER
  * ====================================================
  */
 static float lowPassFilter_X = 0;
@@ -506,10 +515,44 @@ bool i3g4250d_angularVelocityFiltered(float *angularX, float *angularY, float *a
 	return true;
 }
 
+void i3g4250d_getAngleFiltered(float *rollAngle, float *pitchAngle, float *yawAngle, float sampleRate){
+	float dt = 1.0f / sampleRate;
+	float angularX, angularY, angularZ;
+	if(!i3g4250d_angularVelocityFiltered(&angularX, &angularY, &angularZ)) return;
 
+	*rollAngle += angularX * dt; //Unit is degree
+	*pitchAngle += angularY * dt;
+	*yawAngle += angularZ * dt;
 
+	if(*rollAngle > 180) 	*rollAngle -= 360;
+	if(*rollAngle < -180) 	*rollAngle += 360;
 
+	if(*pitchAngle > 180) 	*pitchAngle -= 360;
+	if(*pitchAngle < -180) 	*pitchAngle += 360;
 
+	if(*yawAngle > 180) 	*yawAngle -= 360;
+	if(*yawAngle < -180) 	*yawAngle += 360;
+}
+
+/*
+ * ==============================================================
+ * SENDING DATA TO UART FOR PLOTTING GRAPH
+ * ==============================================================
+ */
+void i3g4250d_sendRollToUART(const float *rawRoll, const float *filteredRoll, uint32_t sampleCount){
+	const char header[] = "i, rawRoll, filteredRoll\r\n";
+	UART1_DMA_Transmitter_Start(header, sizeof(header)-1); //Send every visible character except the terminating NUL byte
+	UART1_DMA_Transmitter_Complete(); //Blocks until DMA is actually done
+
+	char line[64];
+	for(uint32_t i = 0; i < sampleCount; i++){ //Loop over all sample
+		// %lu: format unsigned long
+		// %.4f: printfs four decimal points
+		int len = snprintf(line, sizeof line, "%lu,%.4f,%.4f\r\n", (unsigned long)i, (double)rawRoll[i], (double)filteredRoll[i]);
+		UART1_DMA_Transmitter_Start(line, (uint32_t)len); //txBuffer and bufferSize
+		UART1_DMA_Transmitter_Complete();
+	}
+}
 
 
 

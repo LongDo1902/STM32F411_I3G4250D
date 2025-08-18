@@ -34,6 +34,7 @@ static inline volatile uartRegOffset_t* uartBase(UART_Name_t uartName){
 
 /* Enable GPIOs' Clock */
 static inline General_Status_t enableGpioClock(GPIO_PortName_t port){
+#if 0
 	switch(port){
 		case my_GPIOA: my_RCC_GPIOA_CLK_ENABLE(); return OK;
 		case my_GPIOB: my_RCC_GPIOB_CLK_ENABLE(); return OK;
@@ -43,18 +44,38 @@ static inline General_Status_t enableGpioClock(GPIO_PortName_t port){
 		case my_GPIOH: my_RCC_GPIOH_CLK_ENABLE(); return OK;
 		default: return INVALID_PORT;
 	}
+#else
+	switch(port){
+		case my_GPIOA: __HAL_RCC_GPIOA_CLK_ENABLE(); return OK;
+		case my_GPIOB: __HAL_RCC_GPIOB_CLK_ENABLE(); return OK;
+		case my_GPIOC: __HAL_RCC_GPIOC_CLK_ENABLE(); return OK;
+		case my_GPIOD: __HAL_RCC_GPIOD_CLK_ENABLE(); return OK;
+		case my_GPIOE: __HAL_RCC_GPIOE_CLK_ENABLE(); return OK;
+		case my_GPIOH: __HAL_RCC_GPIOH_CLK_ENABLE(); return OK;
+		default: return INVALID_PORT;
+	}
 }
+
+#endif
 
 /* Enable UARTs' Clock */
 static inline UART_Status_t enableUartClock(UART_Name_t uartName){
+#if 0
 	switch(uartName){
 		case my_UART1: my_RCC_USART1_CLK_ENABLE(); return UART_OK;
 		case my_UART2: my_RCC_USART2_CLK_ENABLE(); return UART_OK;
 		case my_UART6: my_RCC_USART6_CLK_ENABLE(); return UART_OK;
 		default: return UART_NOT_OK;
 	}
+#else
+	switch(uartName){
+		case my_UART1: __HAL_RCC_USART1_CLK_ENABLE(); return UART_OK;
+		case my_UART2: __HAL_RCC_USART2_CLK_ENABLE(); return UART_OK;
+		case my_UART6: __HAL_RCC_USART6_CLK_ENABLE(); return UART_OK;
+		default: return UART_NOT_OK;
+	}
 }
-
+#endif
 
 
 /*
@@ -202,7 +223,11 @@ void UART1_DMA_Receiver_Init(char *rxBuffer, uint32_t bufferSize){
 	 * According to DMA2 request mapping
 	 * 		Choose Stream 2, channel 4 for UART1_RX
 	 */
+#if 0
 	my_RCC_DMA2_CLK_ENABLE(); //Enabling clock for DMA2
+#else
+	__HAL_RCC_DMA2_CLK_ENABLE(); //Enabling clock for DMA2 using HAL lib
+#endif
 
 	/* Assign the address of sender which is UART_DR*/
 	writeDMA2(0, DMA_S2CR, RESET); //Disable stream before configuring
@@ -238,7 +263,11 @@ void UART1_DMA_Transmitter_Init(void){
 	 * According to DMA2 request mapping
 	 * 		Choose Stream 7 and channel 4 for UART1_TX
 	 */
+#if 0
 	my_RCC_DMA2_CLK_ENABLE();
+#else
+	__HAL_RCC_DMA2_CLK_ENABLE();
+#endif
 
 	writeDMA2(0, DMA_S7CR, RESET); //Disable stream before configuring
 	while((readDMA2(0, DMA_S7CR) & 0x1) == SET); //Wait until stream 2 is truly disabled
@@ -253,19 +282,18 @@ void UART1_DMA_Transmitter_Init(void){
 					((cr1 & UART_CR1_M) && !(cr1 & UART_CR1_PCE));
 	uint8_t dataSizeSel = nineBits ? 0b01 : 0b00;
 
-	writeDMA2(11, DMA_S7CR, dataSizeSel); //Set data size is 9 bit or 8 bit
+	writeDMA2(11, DMA_S7CR, 0b00); //Set data size is 8 bit (default)
 	writeDMA2(10, DMA_S7CR, SET); //Set memory increment mode
-	writeDMA2(8, DMA_S7CR, SET); //Enable circular mode
-	writeDMA2(4, DMA_S7CR, SET); //Enable transfer complete interrupt
-
-	NVIC_enableIRQ(DMA2_S7);
+	writeDMA2(8, DMA_S7CR, RESET); //Normal mode
+//	writeDMA2(4, DMA_S7CR, SET); //Enable transfer complete interrupt
+//	NVIC_enableIRQ(DMA2_S7);
 	writeUART(7, my_UART1, UART_CR3, SET); //Enable DMA for transmission
 }
 
 
-void UART1_DMA_Transmitter_Start(char* txBuffer, uint32_t bufferSize){
+void UART1_DMA_Transmitter_Start(const char* txBuffer, uint32_t bufferSize){
 	writeDMA2(0, DMA_S7CR, RESET); //Disable stream before configuring
-	while((readDMA2(0, DMA_S7CR) & 0x1) == SET); //Wait until stream 2 is truly disabled
+	while((readDMA2(0, DMA_S7CR) & 0x1)); //Wait until stream 2 is truly disabled
 
 	/* Clear the flags */
 	writeDMA2(27, DMA_HIFCR, SET); //Clear transfer completed interrupt flag of stream 7
@@ -276,10 +304,13 @@ void UART1_DMA_Transmitter_Start(char* txBuffer, uint32_t bufferSize){
 
 	writeDMA2(0, DMA_S7M0AR, (uint32_t)txBuffer); //Write receiver address to DMA_S7M0AR
 	writeDMA2(0, DMA_S7NDTR, bufferSize); //Let DMA knows the size of the transfered package
-
 	writeDMA2(0, DMA_S7CR, SET); //Enable Stream 7, ready to start!
 }
 
+void UART1_DMA_Transmitter_Complete(void){
+	while((readDMA2(27, DMA_HISR)) == 0); //A transfer complete event occured on stream 7
+	while((readUART(6, my_UART1, UART_SR) & 1) == 0); //Wait UART TC
+}
 
 /*
  * @brief	 High-level helper to configure UART peripheral and its GPIO pins.
@@ -326,7 +357,7 @@ void UART_Init(GPIO_Pin_t TXPin,
 	volatile uartRegOffset_t* huart = uartBase(uartName);
 	if(huart == NULL) {return;}
 
-	long int f_clk = SYSCLK_FREQ_100M; //Note: Remember to change this when you change clock speed in RCC
+	long int f_clk = SYSCLK_FREQ_16M; //Note: Remember to change this when you change clock speed in RCC
 	char over8 = 0; //16x oversampling
 	float uartDiv = (float)f_clk / (8.0f * (2 - over8) * (float)baudRate);
 

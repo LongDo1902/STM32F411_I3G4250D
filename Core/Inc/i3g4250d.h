@@ -17,7 +17,7 @@
 #include "stm32f4xx.h"
 #include "stm32f4xx_hal.h"
 #include "spi.h"
-
+#include "uart.h"
 
 #define I3G4250D_SPI_READ	0x80u
 #define I3G4250_ODR_800		800.0f
@@ -384,5 +384,7 @@ bool i3g4250d_calibrate(uint16_t sampleCount);
 void i3g4250d_softLPF_config(float cutoffFreq, float sampleHz);
 bool i3g4250d_angularVelocityFiltered(float *angularX, float *angularY, float *angularZ);
 void i3g4250d_getAngle(float *rollAngle, float *pitchAngle, float *yawAngle, float sampleRate);
+void i3g4250d_getAngleFiltered(float *rollAngle, float *pitchAngle, float *yawAngle, float sampleRate);
 
+void i3g4250d_sendRollToUART(const float *rawRoll, const float *filteredRoll, uint32_t sampleCount);
 #endif /* INC_I3G4250D_H_ */
