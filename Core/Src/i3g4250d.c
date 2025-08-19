@@ -434,7 +434,7 @@ static bool i3g4250d_convertToDps(void){
  * @brief	Get current angular velocity (dps)
  * 			Outputs X, Y, Z angular rates to user pointer
  */
-bool i3g4250d_angularVelocity(float *angularX, float *angularY, float *angularZ){
+bool i3g4250d_getAngularRate(float *angularX, float *angularY, float *angularZ){
 	if(!i3g4250d_convertToDps()) return false;
 	*angularX = gyroConverted.dpsX;
 	*angularY = gyroConverted.dpsY;
@@ -445,7 +445,7 @@ bool i3g4250d_angularVelocity(float *angularX, float *angularY, float *angularZ)
 void i3g4250d_getAngle(float *rollAngle, float *pitchAngle, float *yawAngle, float sampleRate){
 	float dt = 1.0f / sampleRate;
 	float angularX, angularY, angularZ;
-	if(!i3g4250d_angularVelocity(&angularX, &angularY, &angularZ)) return;
+	if(!i3g4250d_getAngularRate(&angularX, &angularY, &angularZ)) return;
 
 	*rollAngle += angularX * dt; //Unit is degree
 	*pitchAngle += angularY * dt;
@@ -503,9 +503,9 @@ static inline float softLowPassFilter(float newVal, float *currentVal){
 /*
  * @brief	Call this instead of i3g4250d_angularVelocity when you want smoothed
  */
-bool i3g4250d_angularVelocityFiltered(float *angularX, float *angularY, float *angularZ){
+bool i3g4250d_getAngularRate_softLPF(float *angularX, float *angularY, float *angularZ){
 	float newAngularX, newAngularY, newAngularZ;
-	if(!i3g4250d_angularVelocity(&newAngularX, &newAngularY, &newAngularZ)) return false;
+	if(!i3g4250d_getAngularRate(&newAngularX, &newAngularY, &newAngularZ)) return false;
 
 	*angularX = softLowPassFilter(newAngularX, &lowPassFilter_X);
 	*angularY = softLowPassFilter(newAngularY, &lowPassFilter_Y);
@@ -515,10 +515,10 @@ bool i3g4250d_angularVelocityFiltered(float *angularX, float *angularY, float *a
 	return true;
 }
 
-void i3g4250d_getAngleFiltered(float *rollAngle, float *pitchAngle, float *yawAngle, float sampleRate){
+void i3g4250d_getAngle_softLPF(float *rollAngle, float *pitchAngle, float *yawAngle, float sampleRate){
 	float dt = 1.0f / sampleRate;
 	float angularX, angularY, angularZ;
-	if(!i3g4250d_angularVelocityFiltered(&angularX, &angularY, &angularZ)) return;
+	if(!i3g4250d_getAngularRate_softLPF(&angularX, &angularY, &angularZ)) return;
 
 	*rollAngle += angularX * dt; //Unit is degree
 	*pitchAngle += angularY * dt;

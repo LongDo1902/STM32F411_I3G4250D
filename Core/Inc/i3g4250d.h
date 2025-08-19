@@ -101,7 +101,6 @@ typedef enum{
 	ODR_800_BW_110		= 0b1111
 }I3G4250D_DRate_BWidth_t;
 
-
 /*
  * --------------------------------------------------------
  * CTRL_REG2 (0x21) bit-fields
@@ -379,12 +378,12 @@ bool i3g4250d_HPF_enable(I3G4250D_HPCF_t highPassCutoffFreq,
 						 INT1_Sel_t int1Sel);
 
 bool i3g4250d_LPF_enable(void);
-bool i3g4250d_angularVelocity(float *angularX, float *angularY, float *angularZ);
 bool i3g4250d_calibrate(uint16_t sampleCount);
-void i3g4250d_softLPF_config(float cutoffFreq, float sampleHz);
-bool i3g4250d_angularVelocityFiltered(float *angularX, float *angularY, float *angularZ);
+bool i3g4250d_getAngularRate(float *angularX, float *angularY, float *angularZ);
 void i3g4250d_getAngle(float *rollAngle, float *pitchAngle, float *yawAngle, float sampleRate);
-void i3g4250d_getAngleFiltered(float *rollAngle, float *pitchAngle, float *yawAngle, float sampleRate);
+void i3g4250d_softLPF_config(float cutoffFreq, float sampleHz);
+bool i3g4250d_getAngularRate_softLPF(float *angularX, float *angularY, float *angularZ);
+void i3g4250d_getAngle_softLPF(float *rollAngle, float *pitchAngle, float *yawAngle, float sampleRate);
 
 void i3g4250d_sendRollToUART(const float *rawRoll, const float *filteredRoll, uint32_t sampleCount);
 #endif /* INC_I3G4250D_H_ */

@@ -71,16 +71,20 @@ def main():
     print(f"Noise reduction:  ratio={ratio:.3f}  ({db:.2f} dB)\n")
 
     # --- plots ---
+    lineWeight = 0.4
+    resolution = 900
     outdir = Path("plots"); outdir.mkdir(exist_ok=True)
-    plt.figure(); plt.plot(df["i"], df["rawRoll"], label="raw"); plt.plot(df["i"], df["filteredRoll"], label="filtered")
+    plt.figure(); 
+    plt.plot(df["i"], df["rawRoll"], label="raw", lw = lineWeight); 
+    plt.plot(df["i"], df["filteredRoll"], label="filtered", lw = lineWeight);
     plt.xlabel("sample"); plt.ylabel("roll"); plt.title("Raw vs Filtered Roll"); plt.legend(); plt.tight_layout()
-    p1 = outdir/"raw_vs_filtered.png"; plt.savefig(p1, dpi=160); 
+    p1 = outdir/"raw_vs_filtered.png"; plt.savefig(p1, dpi = resolution); 
     if args.show: plt.show(); plt.close()
 
-    plt.figure(); plt.plot(df["i"], df["residual"], label="residual")
+    plt.figure(); plt.plot(df["i"], df["residual"], label="residual", lw = lineWeight);
     plt.xlabel("sample"); plt.ylabel("raw - filtered"); plt.title("Residual (High-frequency component)")
     plt.legend(); plt.tight_layout()
-    p2 = outdir/"residual.png"; plt.savefig(p2, dpi=160);
+    p2 = outdir/"residual.png"; plt.savefig(p2, dpi = resolution);
     if args.show: plt.show(); plt.close()
 
     # Save a clean CSV
